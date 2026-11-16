@@ -435,7 +435,13 @@ The rules, in the floor's frame (`s` the way the joists run, `across` to its lef
   to the next support, so pieces in line never meet; shortened, with a warning) and every other piece lies a thickness over
   (to its left, else its right, wherever it clears the other members and stays on the floor, its end at a rim or a header
   where its own side of the joist meets it), beside the one before; with room on neither side its pieces butt, with a
-  warning. Edge joists, trimmers and pairs under walls always butt. A curved wall under the floor at that height isn't taken to bear it, with a warning. A floor that nothing bears
+  warning. Edge joists, trimmers and pairs under walls always butt. A beam or a straight wall running along a line under it
+  (its centre line within half its width and half a thickness of the line's at both ends, its top within 10 mm of the
+  underside at its middle), as a foundation wall or a sill beam under an edge joist or a rim along the joists, bears the line
+  all along its reach: there the line has no clear span, and a piece between the supports it crosses that is longer than the
+  longest `stock` is spliced over it into the fewest pieces the stock holds, of those the split whose longest piece is
+  shortest (`framing::spliced`, its places every 50 mm along what bears it, none nearer a piece's end than a thickness),
+  butting there (a grid line laps as over a crossing support). A curved wall under the floor at that height isn't taken to bear it, with a warning. A floor that nothing bears
   warns that its joists span the whole floor, and how far. A piece shorter than it is thick is left out, with a warning. A
   piece longer than the longest `stock` length (between what bears it, where a joist could only be spliced) is warned of,
   with its length: add stock or a support under it.
@@ -563,7 +569,9 @@ In that frame each slope is framed by the floor's region framer (`framing::floor
   face of it, lies within 10 mm (`BEARING`) of the rafters' underside, or at its centre line within that plus half its width
   along the rafters times the slope (so a level beam bears a sloping rafter that touches its edge). A wall's top is read at the
   point (`walls::top_over`), so a wall attached to the roof bears it. A curved wall under it isn't taken to bear it, with a
-  warning. A slope that nothing bears warns that its rafters span the whole slope, and how far in plan.
+  warning. A slope that nothing bears warns that its rafters span the whole slope, and how far in plan. A wall or a beam
+  running along a line of rafters under it bears it all along its reach, as a floor's does: no clear span there, and a line
+  longer than the stock may be spliced anywhere over it (every 50 mm), as over a support it crosses.
 - A line of rafters the longest `stock` length holds is one piece, eave to top, continuous over every support (unlike a
   floor's joists, which break over each). A longer one is spliced over its supports (those clear of its ends) into **the fewest
   pieces the longest stock length holds and, of those splits, the one whose longest piece is shortest**; where two splits are

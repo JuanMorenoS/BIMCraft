@@ -24,7 +24,9 @@
 //! - A beam or a straight wall under the floor whose top lies within [`BEARING`] of the joists' underside bears them. Where
 //!   one crosses a joist away from its ends, the joist is in pieces that butt on its centre line, or (`lap`) each runs `lap`
 //!   past it (no more than halfway to the next support, with a warning) and every other piece lies a thickness over, beside
-//!   the one before; an edge joist, a trimmer and a pair under a wall always butt.
+//!   the one before; an edge joist, a trimmer and a pair under a wall always butt. One running along a line under it (its
+//!   centre line within half its width and half a thickness of the line's at both ends) bears it all along its reach: no
+//!   clear span there, and a piece longer than the longest stock is spliced over it into the fewest pieces the stock holds.
 //! - Each hole (an opening, a shaft through the floor) is framed by the box round it in the frame: `trimmers` plies of
 //!   trimmer along each side of it, running the joists' whole length, `trimmers` plies of header across each end between
 //!   them, and the joists it cuts are tails from what they start on to a header. A hole whose box doesn't fit inside the rims
@@ -717,6 +719,25 @@ pub(super) fn stations(layout: Layout, [lo, hi]: [f64; 2], spacing: f64, th: f64
     all.into_iter().filter(|(_, c)| *c >= lo + th / 2.0 - EPS && *c <= hi - th / 2.0 + EPS).collect()
 }
 
+/// The places a line may be spliced over what bears it all along (`borne`, each a reach along `s`) within the run `iv`, none
+/// nearer its ends than `margin`: every 50 mm along each, or more apart where that would be more than 256 places.
+fn along_borne(borne: &[[f64; 2]], iv: [f64; 2], margin: f64) -> Vec<f64> {
+    let mut out = Vec::new();
+    for b in borne {
+        let (from, to) = (b[0].max(iv[0] + margin), b[1].min(iv[1] - margin));
+        if !from.is_finite() || !to.is_finite() || to < from {
+            continue;
+        }
+        let step = ((to - from) / 256.0).max(50.0);
+        let n = ((to - from) / step).floor() as usize;
+        out.extend((0..=n).map(|k| from + k as f64 * step));
+        out.push(to);
+    }
+    out.sort_by(f64::total_cmp);
+    out.dedup_by(|a, b| (*a - *b).abs() < EPS);
+    out
+}
+
 /// Region `g`'s members: its rims, lines of joists or rafters in pieces, trimmers and headers round its holes and rows of
 /// blocking, as the module's rules say.
 pub(super) fn region(g: &Region) -> Framed {
@@ -1120,16 +1141,20 @@ pub(super) fn region(g: &Region) -> Framed {
 
     // What bears them.
     let supports = g.supports;
+    // Where a support running along line `l` lies under it (its centre line within half its width and half a thickness of the
+    // line's at both ends) with its top at the lines' underside, it bears the line all along its reach along `s`.
+    let under = |sup: &Support, l: &Line| {
+        let [p, q] = sup.ends;
+        let band = sup.half + th / 2.0;
+        ((p.1 - l.centre()).abs() <= band && (q.1 - l.centre()).abs() <= band && (g.along)(sup)).then(|| [p.0.min(q.0), p.0.max(q.0)])
+    };
     let mut bearing: Vec<Guid> = Vec::new();
     for sup in supports {
         let bears = lines.iter().any(|l| {
-            let [p, q] = sup.ends;
-            let reach = [p.0.min(q.0), p.0.max(q.0)];
-            let along =
-                (p.1 - q.1).abs() < EPS && (p.1 - l.centre()).abs() <= sup.half + th / 2.0 && l.cover.iter().any(|c| overlap(*c, reach));
+            let along = under(sup, l).is_some_and(|reach| l.cover.iter().any(|c| overlap(*c, reach)));
             let crossing =
                 (g.bears)(sup, l.centre()).is_some_and(|s| l.cover.iter().any(|c| s > c[0] - th - sup.half && s < c[1] + th + sup.half));
-            crossing || (along && (g.along)(sup))
+            crossing || along
         });
         if bears {
             bearing.push(sup.guid);
@@ -1145,8 +1170,11 @@ pub(super) fn region(g: &Region) -> Framed {
     let mut longest: f64 = 0.0;
     let lap = t.lap;
     let laps_kind = |k: Kind| k == Kind::Grid || (g.lap_edges && k == Kind::Edge);
+    let most = t.stock.last().copied();
     for (li, line) in lines.iter().enumerate() {
         let c = line.centre();
+        // Where it is borne all along, by what runs under it.
+        let borne: Vec<[f64; 2]> = supports.iter().filter_map(|sup| under(sup, line)).collect();
         let mut butt: Vec<[f64; 2]> = Vec::new();
         // Each run's pieces as lapped, with the run.
         let mut laps: Vec<([f64; 2], Vec<[f64; 2]>)> = Vec::new();
@@ -1161,10 +1189,29 @@ pub(super) fn region(g: &Region) -> Framed {
                 .collect();
             over.sort_by(f64::total_cmp);
             over.dedup_by(|a, b| (*a - *b).abs() < th);
+            let reach = if laps_kind(line.kind) { lap } else { 0.0 };
             let at = match g.splice {
-                Splice::Every => over.clone(),
+                // Cut over every support it crosses; and a piece between them longer than the longest stock, over what bears
+                // it all along, into the fewest pieces the stock holds.
+                Splice::Every => {
+                    let mut at = over.clone();
+                    if let Some(most) = most {
+                        let ends: Vec<f64> = std::iter::once(iv[0]).chain(over.iter().copied()).chain(std::iter::once(iv[1])).collect();
+                        for w in ends.windows(2) {
+                            let piece = [w.first().copied().unwrap_or(iv[0]), w.last().copied().unwrap_or(iv[1])];
+                            if piece[1] - piece[0] > most + EPS {
+                                at.extend(spliced(&along_borne(&borne, piece, th), piece, most, 1.0, reach, |_| {}));
+                            }
+                        }
+                        at.sort_by(f64::total_cmp);
+                    }
+                    at
+                }
                 Splice::Stock { longest: most, sec } => {
-                    let reach = if laps_kind(line.kind) { lap } else { 0.0 };
+                    let mut over = over.clone();
+                    over.extend(along_borne(&borne, *iv, th));
+                    over.sort_by(f64::total_cmp);
+                    over.dedup_by(|a, b| (*a - *b).abs() < EPS);
                     spliced(&over, *iv, most, sec, reach, |len| {
                         warnings.push(format!(
                             "{who}{} has a piece {len:.0} mm along its slope: no splice over what bears it keeps every piece within \
@@ -1184,6 +1231,7 @@ pub(super) fn region(g: &Region) -> Framed {
                         (g.bears)(sup, c).filter(|s| *s > p[0] - sup.half && *s < p[1] + sup.half).map(|s| [s - sup.half, s + sup.half])
                     })
                     .chain([[p[0], p[0]], [p[1], p[1]]])
+                    .chain(borne.iter().filter(|b| b[1] > p[0] && b[0] < p[1]).map(|b| [b[0].max(p[0]), b[1].min(p[1])]))
                     .collect();
                 bears.sort_by(|a, b| a[0].total_cmp(&b[0]));
                 let mut reach = bears.first().map_or(p[0], |b| b[1]);
@@ -1279,7 +1327,7 @@ pub(super) fn region(g: &Region) -> Framed {
             }
             // A floor's, cut over every support (a roof's rafters, spliced by the stock, are warned of as they are spliced).
             let every = matches!(g.splice, Splice::Every);
-            if let Some(&most) = t.stock.last().filter(|most| every && p[1] - p[0] > **most + EPS) {
+            if let Some(most) = most.filter(|most| every && p[1] - p[0] > *most + EPS) {
                 warnings.push(format!(
                     "{who}{}/{j} is {:.0} mm long between what bears it, longer than the longest stock length, {most:.0} mm, so it is \
                      longer than any stock; add stock or a support under it",

@@ -578,6 +578,57 @@ fn a_floor_framed_along_its_long_way_and_an_l_shaped_one_cut_by_a_skewed_edge_fr
     }
 }
 
+/// A floor 9000 by 4000 framed with its joists along x, a 200 mm wall under each long edge (its outer face at the floor's
+/// edge, its top at the joists' underside) and two beams across it at x 3000 and 6000 between the walls' inner faces: the
+/// edge joists lie over the walls along them, not over the beams, which stop short of them. A rim on a sill, an edge joist
+/// on a foundation wall, is borne all along it: each is spliced over its wall within the stock, with no warning, and its
+/// clear span there is none.
+#[test]
+fn an_edge_joist_over_a_wall_along_it_is_borne_all_along_it() {
+    let mut s = Session::new();
+    run(
+        &mut s,
+        "type",
+        json!({"category": "floor", "name": "Joists Only", "layers": [{"function": "structure", "material": "Timber", "thickness": 184}]}),
+    );
+    run(
+        &mut s,
+        "type",
+        json!({"category": "wall", "name": "Foundation", "layers": [{"function": "structure", "material": "Timber", "thickness": 200}]}),
+    );
+    run(&mut s, "type", json!({"category": "beam", "name": "Girder", "width": 114, "depth": 235}));
+    let walls: Vec<u64> = [100.0, 3900.0]
+        .iter()
+        .map(|y| {
+            first(&run(&mut s, "wall", json!({"points": [[0, y], [9000, y]], "type": "Foundation", "base_offset": -1184, "height": 1000})))
+        })
+        .collect();
+    for x in [3000.0, 6000.0] {
+        run(&mut s, "beam", json!({"points": [[x, 200], [x, 3800]], "type": "Girder", "offset": -184}));
+    }
+    let id = first(&run(&mut s, "floor", json!({"boundary": [[0, 0], [9000, 0], [9000, 4000], [0, 4000]], "type": "Joists Only"})));
+    let r = run(&mut s, "frame", json!({"id": id, "angle": 0}));
+    assert_eq!(r["warnings"], json!([]), "{r}");
+    let fr = framing(&mut s, id);
+    let ms = members(&fr);
+    for w in &walls {
+        assert!(fr["supports"].as_array().is_some_and(|a| a.contains(&json!(w))), "wall {w} bears: {}", fr["supports"]);
+    }
+    let edges: Vec<&Value> = ms.iter().filter(|m| m["key"].as_str().is_some_and(|k| k.starts_with("edge/"))).collect();
+    for edge in ["edge/0/", "edge/2/"] {
+        let pieces: Vec<&&Value> = edges.iter().filter(|m| m["key"].as_str().is_some_and(|k| k.starts_with(edge))).collect();
+        assert_eq!(pieces.len(), 2, "{edge}: in two pieces from 6100 stock: {pieces:?}");
+        let total: f64 = pieces.iter().map(|m| len(m)).sum();
+        close(total, 9000.0 - 2.0 * 38.0, &format!("{edge}'s pieces run rim to rim"));
+        for m in &pieces {
+            assert!(len(m) <= 6100.0 && m["stock"].as_f64().is_some(), "{m}");
+        }
+    }
+    // Borne all along, the edge joists span nothing: the longest clear span is a grid joist's between the rim and a beam.
+    let span = fr["span"].as_f64().unwrap_or(f64::NAN);
+    assert!(span < 3000.0, "{span}");
+}
+
 /// For the hostile sweep (`tests::hostile_params_never_panic_or_break_the_model`): a framed floor with an opening and a
 /// beam under it, made in `base`; and payloads for the framing commands on floors.
 pub(crate) fn sweep_payloads(base: &mut Session) -> Vec<(&'static str, Value)> {
