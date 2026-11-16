@@ -263,7 +263,8 @@ opening's width (or the last) its header, by default 2 plies 184 deep up to 1250
 `corner` `three_stud`, `two_stud` or `none`; `tee` `studs` or `none`; `blocking`, heights over the wall's base of rows of flat
 blocking, none by default; and `stock`, the stock lengths a cut list takes members from, shortest first (2440, 3050, 3660,
 4270, 4880, 6100); the floors' fields (`rim`, `lap`, `bridging`, `trimmers`, `under_partitions`, [below](#floors)), which roofs
-share but `under_partitions`; and the roofs' own, `ridge` ([below](#roofs)), none of which a wall reads. `Model::check` holds each to its range (`framing::check_type`): thickness 10 to 300 and spacing wider than
+share but `under_partitions`; and the roofs' own, `ridge` ([below](#roofs)), none of which a wall reads; and what the [structural check](#structural-check)
+reads, `wood`, `floor_loads`, `roof_loads` and `depths`. `Model::check` holds each to its range (`framing::check_type`): thickness 10 to 300 and spacing wider than
 it (up to 3000), 0 to 4 plates of each kind, 0 to 3 kings and jacks, rough allowances 0 to 500, 1 to 8 headers of 1 to 3 plies
 and 1 to 1000 deep, 8 rows of blocking and 16 stock lengths at most, each longer than the last, a lap of 0 to 2000, bridging
 of 0 or 300 to 100000, 1 to 3 trimmers, and a material the library has.
@@ -494,8 +495,8 @@ and Other (Stock Lengths).
 Not yet, for floors: sloped and shaped floors (refused); blocking over supports and at the rims; joist hangers and other
 connectors; cantilevers past a support (the joists end at the outline, wherever the supports are); splicing a joist between
 supports (one longer than every stock length is warned of); blocking where a concave outline leaves a bay between lines
-that don't face each other along their whole length; a curved wall as a support; span checks against a species or a table;
-trimmers and headers sized by the opening; at an inward corner of the outline that isn't square, the wedge between the two rims
+that don't face each other along their whole length; a curved wall as a support; trimmers and headers sized by the opening
+(only the joists are checked, [below](#structural-check)); at an inward corner of the outline that isn't square, the wedge between the two rims
 (warned of, with its width); and the tip of a sharp corner past where its rims stop.
 
 #### Roofs
@@ -628,12 +629,70 @@ rafter is a box with plumb ends, resting on the top plate's edge); collar ties, 
 lookouts and outriggers under a rake's overhang, and ladder blocking over a partition along the rafters; blocking over bearing
 walls and at the eaves; eave boards and edge rafters along a sloped slope's skewed edges (warned); a ridge beam that bears
 the rafters (the ridge board bears nothing); roofs by extrusion and shaped roofs (refused); a curved wall as a support; a
-splice placed by hand; span checks against a species or a table; connectors (hurricane ties, hangers); and keys that last
+splice placed by hand; checks of anything but the rafters ([below](#structural-check)); connectors (hurricane ties, hangers); and keys that last
 through an edit that renumbers the slopes.
 
 Not yet, for walls: framing elevations;
-picking or tagging a single member; sheathing; span checks; connectors; a plate's splices placed by hand; and at non-square corners and joins of three walls the framed length falls back to the
+picking or tagging a single member; sheathing; structural checks of studs and headers (their loads come from what stands on
+the wall); connectors; a plate's splices placed by hand; and at non-square corners and joins of three walls the framed length falls back to the
 layer's shorter edge, which may leave a gap or an overlap between two framed walls' members.
+
+#### Structural check
+
+`framing/check.rs` checks a framed floor's joists and a framed roof's rafters for their loads (`framing_check {id? | ids?, wood?,
+live?, dead?}`, read and never built; without `id` or `ids`, every framed floor and roof). The layout rules above say where the
+lines go; this says whether lines of the framing type's section, at its spacing, carry what the floor or roof puts on them over
+the span the model gives them, and if not, what would. Each host's `Framing::regions` (`Spanned`) are what it frames in lines:
+a floor's one, a roof's each slope with rafters (`slope <i>`), each with its own longest clear span in plan (between the faces of
+what bears its lines; with nothing under it, rim to rim or eave to ridge board), its slope and its section, `thickness` by the
+structure layer's depth (a rafter's square to its slope). Each region is one line, simply supported over that span under a
+uniform load, the loads (kPa) times the spacing, by allowable stress design as the NDS has it:
+
+- Bending: `M = wL²/8`, `fb = M/S` (`S = bd²/6`), against `Fb' = Fb · CF · Cr`.
+- Shear: `V = wL/2` (at the support, not a depth from it, on the safe side), `fv = 1.5V/bd`, against `Fv`.
+- Deflection: `5wL⁴/384EI` (`I = bd³/12`), under the live load against L/360 (a floor) or L/240 (a roof), and under the whole
+  load against L/240 (a floor) or L/180 (a roof).
+- A rafter: the live load (or snow) lies on the roof's plan and the dead load on its slope, so per metre of plan the dead load
+  is `dead / cos θ`. Bending and shear take `w` per mm of plan over the span in plan (`wL²/8` in plan is the moment of the
+  load's part square to the rafter over its sloped length, the same number); deflection takes that part, `w cos² θ`, over the
+  sloped length `Ls = L / cos θ`, and its limits are `Ls/240` and `Ls/180`. A floor is the case `θ = 0`.
+- The factors: `CD`, `CM`, `Ct` and `CL` 1.0 (normal load duration, which is on the safe side for a roof's live load; dry
+  service; the compression edge held by the sheathing); `CF`, the size factor by depth, as the wood's table has it; `Cr` 1.15,
+  the repetitive member factor, for lines 610 mm (24 in) apart or closer, else 1.0. E is the reference E, not Emin.
+
+What fails is said with the shallowest depth that passes at the type's spacing (from the type's `depths`, else the sawn depths
+of a 2x4 to a 2x12: 89, 140, 184, 235, 286) and the widest spacing, to the millimetre, that passes at its depth (which knows that
+past 610 mm `Cr` is lost). The reply gives each region's span, slope, sloped length, section, spacing, loads, factors, the four
+checks (value, allowed, ratio, ok), `ok` and, failing, `suggest {depth, spacing}`; each host's `wood` (with its source, and
+whether it was given or is the default) and `notes`, which say what was assumed; and `warnings`, one for each region that fails,
+naming its host, its slope, its section, spacing and span, which checks fail and by how much, and what would pass. `frame` replies
+with the same warnings as `structure`, beside its own `warnings` of what couldn't be framed, so a framing type too weak for a
+floor's span is said as it is framed.
+
+The woods are data, `crates/core/data/wood.json`, each naming its source, in psi as published: Douglas Fir-Larch No. 2 (AWC NDS
+2018 Supplement Table 4A: Fb 900, Fv 180, E 1,600,000, with Table 4A's size factors, 1.5 for a 2x4 down to 1.0 for a 2x12 and
+0.9 deeper), Southern Pine No. 2 (Table 4B, the values effective June 2013: Fb 1100, 1000, 925, 800 and 750 for 2x4 to 2x12, the
+size factor in them, Fv 175, E 1,400,000), and `plantation_pine_assumed`, a fast-grown plantation pine (Pinus patula, caribaea,
+oocarpa) whose values (Fb 750, Fv 135, E 1,100,000, with Table 4A's size factors) are an assumption from no standard, set below
+the two above, marked `assumed` and said so in the notes until the local standard's are put in their place. A framing type
+naming no `wood` is checked as Douglas Fir-Larch No. 2, and the notes say so. The loads are a framing type's `floor_loads` and
+`roof_loads` (`{live, dead}`, kPa), else a floor's 1.9 kPa (40 psf) live and 0.5 kPa dead and a roof's 1.0 kPa live (or snow)
+and 0.5 kPa dead; `live` and `dead` given to the command override them for every region. These defaults are a dwelling's usual
+ones and are checked against no code: a project's are the local code's, which the notes ask to check (in Colombia NSR-10:
+Título B for the loads, Título G for wood structures, whose structural groups' design values belong in `wood.json` in place of
+the assumed pine's). `Model::check` holds a type's `wood` to the table's keys, its loads to 0 to 50 kPa and its `depths` to at
+most 16, each 10 to 2000 mm and deeper than the last (`framing::check_type`). The four fields are left out of a type that has
+none, and held in format 21 with the rest of framing.
+
+The acceptance cases are worked by hand in `framing_check_tests.rs`: a 2x10 Douglas Fir-Larch No. 2 joist 406.4 apart over 4.0 m
+passes (bending 71 %, live-load deflection 51 %); over 6.0 m it fails (bending 160 %, live-load deflection 172 %), no depth up
+to 286 passes at 406.4 and 235 apart does; a 2x8 rafter 609.6 apart on a 30° slope over 3.0 m in plan passes (bending 59 %).
+
+Not yet: trimmers and headers (which carry the tail joists' ends), joists doubled under walls, ridge boards and rims, and walls'
+studs and headers, which need the loads of what stands on them; a ridge beam or a hip rafter; point loads; continuous lines over
+a middle support (each span is checked simply supported, which is on the safe side for bending); bearing (Fc⊥) at the supports;
+load duration factors and load combinations other than live plus dead; vibration; the Type Properties' fields for the wood,
+loads and depths (the `type` command sets them); and NSR-10 Título G's values.
 
 ### Timber wall framing
 

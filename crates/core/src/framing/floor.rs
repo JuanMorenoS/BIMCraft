@@ -480,6 +480,7 @@ pub fn floor(m: &Model, id: Id) -> Result<Option<Framing>, String> {
         warnings: Vec::new(),
         supports: Vec::new(),
         span: Some(0.0),
+        regions: Vec::new(),
     };
     let ring: Vec<P2> = f.boundary.iter().map(|q| local(*q)).collect();
     if ring.len() < 3 {
@@ -552,6 +553,15 @@ pub fn floor(m: &Model, id: Id) -> Result<Option<Framing>, String> {
     out.warnings.extend(framed.warnings);
     out.supports = framed.bearing;
     out.span = Some(framed.longest);
+    if framed.lines > 0 && framed.longest > 0.0 {
+        out.regions.push(super::check::Spanned {
+            region: "floor".into(),
+            role: Role::Joist,
+            span: framed.longest,
+            slope: 0.0,
+            section: [t.thickness, z1 - z0],
+        });
+    }
     if out.supports.is_empty() && framed.lines > 0 {
         out.warnings.push(format!(
             "nothing bears its joists: no beam or wall under it has its top at their underside ({z0:.0} mm) within {BEARING} mm, so \

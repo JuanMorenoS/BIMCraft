@@ -332,6 +332,7 @@ pub fn roof(m: &Model, id: Id) -> Result<Option<Framing>, String> {
         warnings: Vec::new(),
         supports: Vec::new(),
         span: Some(0.0),
+        regions: Vec::new(),
     };
     let th = t.thickness;
     // The footprint's edges, which a slope's edge on the roof's edge lies along: its whole length, over one edge of the
@@ -629,6 +630,15 @@ pub fn roof(m: &Model, id: Id) -> Result<Option<Framing>, String> {
             ));
         }
         out.span = Some(out.span.unwrap_or(0.0).max(framed.longest));
+        if framed.lines > 0 && framed.longest > 0.0 {
+            out.regions.push(super::check::Spanned {
+                region: format!("slope {}", f.index),
+                role: Role::Rafter,
+                span: framed.longest,
+                slope: f.slope(),
+                section: [th, dz / sec],
+            });
+        }
         bearing.extend(framed.bearing);
     }
     // Each ridge board longer than the longest stock length, spliced over the rafters that end on it, as a rim is: where

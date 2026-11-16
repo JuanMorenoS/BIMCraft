@@ -191,7 +191,8 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// "saved by a newer BIMCraft". A file the Family Editor's unreleased builds stamped 21 opens as one of 21: it holds no framing.
 /// 21 also: a floor's `framing` and `framing_angle` (its joists worked out as a wall's studs are), and a framing type's `rim`,
 /// `lap`, `bridging`, `trimmers` and `under_partitions`; 21 isn't released, so it holds them with the walls'. And a roof's
-/// `framing` (its rafters worked out as a floor's joists are) and a framing type's `ridge`, held with them.
+/// `framing` (its rafters worked out as a floor's joists are) and a framing type's `ridge`, held with them; and a framing
+/// type's `wood`, `floor_loads`, `roof_loads` and `depths`, which `framing_check` reads, held with them too.
 pub const FORMAT: u32 = 21;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;

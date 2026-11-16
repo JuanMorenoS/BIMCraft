@@ -1,0 +1,55 @@
+{
+  "about": "Reference design values (allowable stress design, normal load duration, dry service) of sawn dimension lumber 2 to 4 inches thick, for framing_check (crates/core/src/framing/check.rs). Values in psi as published. fb: bending, by the actual depth (mm) a row holds up to (the last row: any deeper); size_factor: what fb is multiplied by, by depth, where the table gives one reference value for every width (none: 1.0, the size factor being in fb's rows already); fv: shear parallel to grain; e: modulus of elasticity.",
+  "woods": [
+    {
+      "key": "douglas_fir_larch_no2",
+      "name": "Douglas Fir-Larch No. 2",
+      "source": "AWC NDS 2018 Supplement, Table 4A (visually graded dimension lumber), Douglas Fir-Larch No. 2; size factor CF for Fb from Table 4A's adjustment factors (2 in and 3 in thick)",
+      "fb": [{ "psi": 900 }],
+      "size_factor": [
+        { "up_to": 89, "cf": 1.5 },
+        { "up_to": 114, "cf": 1.4 },
+        { "up_to": 140, "cf": 1.3 },
+        { "up_to": 184, "cf": 1.2 },
+        { "up_to": 235, "cf": 1.1 },
+        { "up_to": 286, "cf": 1.0 },
+        { "cf": 0.9 }
+      ],
+      "fv": 180,
+      "e": 1600000
+    },
+    {
+      "key": "southern_pine_no2",
+      "name": "Southern Pine No. 2",
+      "source": "AWC NDS 2018 Supplement, Table 4B (visually graded Southern Pine dimension lumber, the values effective June 1, 2013; size factor included by width, and 0.9 of the 12 in value wider than 12 in), Southern Pine No. 2",
+      "fb": [
+        { "up_to": 89, "psi": 1100 },
+        { "up_to": 140, "psi": 1000 },
+        { "up_to": 184, "psi": 925 },
+        { "up_to": 235, "psi": 800 },
+        { "up_to": 286, "psi": 750 },
+        { "psi": 675 }
+      ],
+      "fv": 175,
+      "e": 1400000
+    },
+    {
+      "key": "plantation_pine_assumed",
+      "name": "Plantation pine (assumed values)",
+      "source": "An assumption, from no standard: values set below the NDS No. 2 softwoods above, with Table 4A's size factors, for a fast-grown plantation pine (Pinus patula, P. caribaea, P. oocarpa) until the local standard's are put in their place: in Colombia NSR-10 Titulo G's for the wood's structural group, or a grading agency's for the lumber bought",
+      "assumed": true,
+      "fb": [{ "psi": 750 }],
+      "size_factor": [
+        { "up_to": 89, "cf": 1.5 },
+        { "up_to": 114, "cf": 1.4 },
+        { "up_to": 140, "cf": 1.3 },
+        { "up_to": 184, "cf": 1.2 },
+        { "up_to": 235, "cf": 1.1 },
+        { "up_to": 286, "cf": 1.0 },
+        { "cf": 0.9 }
+      ],
+      "fv": 135,
+      "e": 1100000
+    }
+  ]
+}

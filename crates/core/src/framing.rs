@@ -26,6 +26,7 @@ use crate::geom::{self, P2};
 use crate::model::{Element, Function, Guid, Id, MAX_COORD, Model, TOL, Wall};
 use crate::walls::{self, Axis, Plane, Prism};
 
+pub mod check;
 pub mod floor;
 pub mod roof;
 
@@ -143,6 +144,19 @@ pub struct FramingType {
     pub under_partitions: bool,
     /// A roof's: a ridge board where two of its slopes meet at a ridge, the rafters stopping at its faces.
     pub ridge: bool,
+    /// A floor's and a roof's: the wood its joists and rafters are checked as (`framing_check`), a key of `data/wood.json`
+    /// ([`check::woods`]); none, [`check::DEFAULT_WOOD`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wood: Option<String>,
+    /// The loads a floor's joists are checked for, kPa; none, [`check::Use::loads`]'s.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub floor_loads: Option<check::Loads>,
+    /// The loads a roof's rafters are checked for, kPa (live on plan, dead on the slope); none, [`check::Use::loads`]'s.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub roof_loads: Option<check::Loads>,
+    /// The depths, mm, shallowest first, a check offers in place of one that fails; none, [`check::DEPTHS`].
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub depths: Vec<f64>,
 }
 
 impl Default for FramingType {
@@ -173,6 +187,10 @@ impl Default for FramingType {
             trimmers: 2,
             under_partitions: true,
             ridge: true,
+            wood: None,
+            floor_loads: None,
+            roof_loads: None,
+            depths: Vec::new(),
         }
     }
 }
@@ -329,6 +347,9 @@ pub struct Framing {
     pub supports: Vec<Guid>,
     /// A floor's or a roof's: the longest clear span of a joist or a rafter between what bears it, in plan, mm. A wall's: none.
     pub span: Option<f64>,
+    /// A floor's or a roof's: each region of lines it frames (the floor; each slope of a roof that has rafters), with its own
+    /// longest clear span, how steep it is and its lines' section, which [`check`] checks. A wall's: none.
+    pub regions: Vec<check::Spanned>,
 }
 
 /// A line of a cut list: `count` members alike.
@@ -491,6 +512,24 @@ pub(crate) fn check_type(m: &Model, name: &str, t: &FramingType) -> Result<(), S
         within("bridging (mm; 0 for none)", t.bridging, 300.0, 100_000.0)?;
     }
     count("trimmers", t.trimmers, 1, 3)?;
+    if let Some(w) = t.wood.as_deref().filter(|w| check::wood(w).is_none()) {
+        return Err(format!("{who}: there is no wood `{w}`; it is one of {}", check::wood_keys()));
+    }
+    for (what, loads) in [("floor_loads", &t.floor_loads), ("roof_loads", &t.roof_loads)] {
+        if let Some(l) = loads {
+            within(&format!("{what} live load (kPa)"), l.live, 0.0, check::MAX_LOAD)?;
+            within(&format!("{what} dead load (kPa)"), l.dead, 0.0, check::MAX_LOAD)?;
+        }
+    }
+    if t.depths.len() > 16 {
+        return Err(format!("{who}: {} depths; it has 16 at most", t.depths.len()));
+    }
+    for &d in &t.depths {
+        within("depth (mm)", d, 10.0, 2000.0)?;
+    }
+    if t.depths.windows(2).any(|w| w[1] <= w[0]) {
+        return Err(format!("{who}: its depths go shallowest first, each deeper than the last"));
+    }
     if let Some(mat) = &t.material
         && !m.materials.contains_key(mat)
     {
@@ -764,6 +803,7 @@ pub fn wall(m: &Model, id: Id) -> Result<Option<Framing>, String> {
         warnings: Vec::new(),
         supports: Vec::new(),
         span: None,
+        regions: Vec::new(),
     };
     let (start, finish) = (end(m, id, w, k, across, false), end(m, id, w, k, across, true));
     let (a, b) = (start.at, finish.at);
@@ -1366,15 +1406,22 @@ pub(crate) fn frame(s: &mut Session, p: &Value) -> Result<Value, String> {
             _ => {}
         }
     }
-    let (mut total, mut warnings) = (0, Vec::new());
+    let (mut total, mut warnings, mut structure) = (0, Vec::new(), Vec::new());
     for id in &ids {
         let who = named(m, *id);
         if let Some(f) = of(m, *id).map_err(|e| bad(c, format!("{who}: {e}")))? {
             total += f.members.len();
+            structure.extend(check::warnings(m, *id, &f));
             warnings.extend(f.warnings.into_iter().map(|w| format!("{who}: {w}")));
         }
     }
-    Ok(json!({"ids": ids, "type": name, "members": total, "warnings": warnings}))
+    let mut out = json!({"ids": ids, "type": name, "members": total, "warnings": warnings});
+    // A floor's joists or a roof's rafters that don't carry the type's loads (`framing_check`), apart from what couldn't be
+    // framed.
+    if !structure.is_empty() {
+        out["structure"] = json!(structure);
+    }
+    Ok(out)
 }
 
 /// `unframe`: walls, floors and roofs framed no more.

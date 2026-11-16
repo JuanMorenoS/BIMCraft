@@ -1364,7 +1364,7 @@ other_files(
          cabletray|wire|downconductor|groundconductor|cable, name, thickness? | width?, height?, sill?, operation? | width?, depth?, round?, \
          material?, profile?, shape?, web?, flange?, radius? | height?, spacing? | floor?, floor_offset?, ceiling?, ceiling_offset?, colour? \
          | spacing?, layout?, thickness?, material?, bottom_plates?, top_plates?, kings?, jacks?, window_rough?, door_rough?, headers?, \
-         sill_plates?, corner?, tee?, blocking?, stock?, rim?, lap?, bridging?, trimmers?, under_partitions?, ridge?} creates the type, or \
+         sill_plates?, corner?, tee?, blocking?, stock?, rim?, lap?, bridging?, trimmers?, under_partitions?, ridge?, wood?, floor_loads?, roof_loads?, depths?} creates the type, or \
          changes it everywhere it's used. \
          A framing type (see `frame`; all mm, every field optional, a new one starting from 2x4 at 16\" for a bearing wall) has \
          `spacing` (406.4; the grid's stud centres apart), `layout` (start | end | centre: where the grid is measured from along \
@@ -1385,7 +1385,10 @@ other_files(
          layer), `rim` (a sub-fascia along each eave), `lap` (where a rafter longer than the longest `stock` is spliced over \
          walls or beams, into the fewest pieces that stock holds and of those the split whose longest piece is shortest), \
          `bridging` and `trimmers` as a floor's, and `ridge` (true: a ridge board where two slopes meet at a \
-         ridge, the rafters stopping at its faces). Fields given replace the type's; others are kept. \
+         ridge, the rafters stopping at its faces); and what `framing_check` reads: `wood` (douglas_fir_larch_no2, \
+         southern_pine_no2 or plantation_pine_assumed; none, Douglas Fir-Larch No. 2), `floor_loads` and `roof_loads` \
+         ({live, dead}, kPa, 0 to 50; none, 1.9 and 0.5 for a floor, 1.0 and 0.5 for a roof) and `depths` (mm, shallowest \
+         first, what a failing check offers; none, 89, 140, 184, 235 and 286). Fields given replace the type's; others are kept. \
          A room type may name a `floor` type and a `ceiling` type (null, none; a new project's Standard has neither): each of its \
          rooms then has a floor (its top `floor_offset` mm over the room's level, 0) and a ceiling (its underside \
          `ceiling_offset` mm over it, 2600) of its own, made when the room is bounded and kept along its boundary at the walls' \
@@ -2422,6 +2425,32 @@ other_files(
          `face/<lower slope>/ridge/<edge>` (a rim or a ridge board spliced at a stock length adds `/<n>`); slopes are numbered as the roof's faces are, so an edit to its footprint that \
          changes how they meet may number them anew",
         crate::framing::query,
+    ),
+    other(
+        "framing_check",
+        "Check Framing",
+        "{id? | ids?, wood?, live?, dead?} checks framed floors' joists and roofs' rafters (all of them, without `id` or `ids`) for \
+         their loads, read and never built: each region (a floor; each slope of a roof) as one line of the framing type's \
+         `thickness` by its structure layer's depth (a rafter's square to its slope), `spacing` apart, simply supported over \
+         the longest clear span `framing` reports, under a uniform load, by allowable stress design (NDS): bending (M = wL²/8 \
+         against Fb times the size factor and, 610 mm apart or less, the repetitive member factor 1.15), shear (V = wL/2, \
+         1.5V/bd against Fv) and deflection (5wL⁴/384EI, under the live load against L/360 for a floor and L/240 for a roof, \
+         under all of it L/240 and L/180). A roof's live load lies on its plan and its dead load on its slope; its load is \
+         taken per mm of plan for bending and shear, and square to the rafter along its sloped length for deflection. The \
+         wood is the framing type's `wood` (else Douglas Fir-Larch No. 2) or `wood` given (douglas_fir_larch_no2, \
+         southern_pine_no2: NDS 2018 Supplement Tables 4A and 4B; plantation_pine_assumed: an assumption, to be replaced by \
+         the local standard's values); the loads, kPa, the type's `floor_loads` or `roof_loads` {live, dead}, else a floor's \
+         1.9 live and 0.5 dead and a roof's 1.0 live (or snow) and 0.5 dead, defaults to check against the local code (in \
+         Colombia NSR-10, Título B and Título G); `live` and `dead` given (0 to 50) override them for every region. Replies \
+         {units, hosts: [{id, host, type, wood {key, name, source, assumed, given}, regions: [{region (floor, slope <i>), role, \
+         span (plan), slope (degrees), length (along the slope), section, spacing, loads {live, dead}, factors {cd, cm, ct, cl, \
+         cf, cr}, bending and shear {value (MPa), allowed, ratio, ok}, deflection_live and deflection_total {value (mm), \
+         allowed, ratio, ok}, ok, suggest? {depth (the shallowest of the type's `depths`, else 89 to 286, that passes at its \
+         spacing; null, none), spacing (the widest, to the mm, that passes at its depth; null, none)}}], ok, notes (what was \
+         assumed)}], ok, warnings (each failing region, naming its host)}. `frame` replies with the same warnings as \
+         `structure`. Trimmers, headers, the joists under walls, rims and ridge boards, and walls' studs and headers, aren't \
+         checked",
+        crate::framing::check::command,
     ),
     other(
         "timber_framing",
